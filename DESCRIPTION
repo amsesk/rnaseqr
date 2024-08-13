@@ -1,0 +1,5 @@
+Type: project 
+Description: Saba Ghassemi sequencing projects.
+Depends:
+    languageserver
+    BiocManager
