@@ -1,5 +1,7 @@
 Type: project 
 Description: Saba Ghassemi sequencing projects.
 Depends:
+    devtools
     languageserver
     BiocManager
+    tinytex

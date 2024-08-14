@@ -15,7 +15,11 @@ library(tidytable)
 library(circlize)
 
 # %%
-hm_counts = function(counts, genes = NULL, scale = TRUE, show_row_names = FALSE, show_column_names = TRUE, ...) {
+hm_counts = function(counts,
+                     genes = NULL,
+                     scale = TRUE,
+                     col = circlize::colorRamp2(c(-2,0,2), c("blue", "white", "red")), 
+                     ...) {
   if (!is.null(genes)) {
     counts = counts[genes,]
   }
@@ -27,11 +31,72 @@ hm_counts = function(counts, genes = NULL, scale = TRUE, show_row_names = FALSE,
   }
 
   hm = ComplexHeatmap::Heatmap(counts,
-          show_row_names = show_row_names,
-          show_column_names = show_column_names,
-          ...
+                               col = col,
+                               # width = width,
+                               # height = height,
+                               ...
   )
   hm
+}
+
+# %%
+
+hm_size_and_position = function(figure_width,
+                                figure_height,
+                                row_dend_width = unit(0.2, "in"),
+                                row_names_max_width = unit(1, "in"),
+                                column_dend_height = unit(0.2, "in"),
+                                column_names_max_height = unit(1, "in"),
+                                hm_width_scaling = 0.8
+                                ) {
+  LEFT_PADDING = unit(0.05, "in")
+  values = c()
+  values$row_dend_width = row_dend_width
+  values$row_names_max_width = row_names_max_width
+  values$column_dend_height = column_dend_height
+  values$column_names_max_height = column_names_max_height
+  values$width = (figure_width - row_dend_width - row_names_max_width)*hm_width_scaling
+  values$height = (figure_height - column_dend_height - column_names_max_height)
+  values$padding = unit(c(0, LEFT_PADDING, 0, (figure_width-(values$width + row_dend_width + LEFT_PADDING))), "in")
+  values
+
+}
+# %%
+pretty_draw_hm = function(counts,
+                          genes = NULL,
+                          scale = TRUE,
+                          figure_width = unit(6.5, "in"),
+                          figure_height = unit(4.5, "in"),
+                          col = circlize::colorRamp2(c(-2,0,2), c("blue", "white", "red")),
+                          show_row_names = FALSE,
+                          ...) {
+  legend_title = ifelse(scale, "Scaled expression", "Expression")
+  legend = Legend(col_fun = col, title = legend_title, title_gp = gpar(fontsize = 8), labels_gp = gpar(fontsize = 6))
+  hm_plt_params = hm_size_and_position(figure_width = unit(7.5, "in"),
+                                       figure_height = unit(5.0, "in"),
+                                       row_names_max_width = unit(0, "in"))
+  heatmap = hm_counts(counts = counts,
+                      genes = genes,
+                      scale = scale,
+                      col = col,
+                      show_row_names = show_row_names,
+                      show_heatmap_legend = FALSE,
+                      row_dend_width = hm_plt_params$row_dend_width,
+                      row_names_max_width = hm_plt_params$row_names_max_width,
+                      column_dend_height = hm_plt_params$column_dend_height,
+                      column_names_max_height = hm_plt_params$column_names_max_height,
+                      width = hm_plt_params$width,
+                      height = hm_plt_params$height,
+                      ...)
+  draw(heatmap,
+       padding = hm_plt_params$padding,
+  )
+  draw(legend, x = unit(0.90, "npc"), y = unit(0.5, "npc"))
+}
+
+# %%
+top_n_variable_genes = function(counts, ntopvar) {
+  names(sort(apply(counts, 1, var), decreasing = TRUE)[1:ntopvar])
 }
 
 # %%
@@ -66,7 +131,7 @@ rm_singleton_genes = function(counts) {
                                        length(which(row==0)) == (nsamp-1)
     })))
   filt_counts = counts[-singleton_idx,]
-  message("Removing ", length(singleton_idx), " genes with singleton counts, leaving ", round(sum(filt_counts)/sum(counts)*100, 2), "% of counts.")
+  message("Removing ", length(singleton_idx), " genes with singleton counts, leaving ", round(sum(filt_counts)/sum(counts)*100, 4), "% of total counts.")
   filt_counts
 }
 
@@ -146,7 +211,7 @@ deseq_deg_multi = function(
     }
     write_delim(allres, file = write_results_to, delim =  delim, quote = "none")
   }
-  allres
+  as_tibble(allres)
 }
  
 # %%
