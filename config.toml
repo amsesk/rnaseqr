@@ -1,0 +1,29 @@
+[counts]
+path = "/home/ubuntu/shan_rna_atac/analysis/rna/outs/rna_ensembl_counts_matrix_n21695x8.tsv"
+delim = "\t"
+
+[counts.filter]
+remove_lowest = 0.2
+smallest_group_size = 4
+
+[plotting.heatmap]
+n_top_variable_genes = 500
+
+[plotting.pca]
+n_top_variable_genes = 5000
+
+[metadata]
+path = "/home/ubuntu/shan_rna_atac/analysis/rna/metadata.tsv"
+delim = "\t"
+
+[deg]
+sample_column = "sample"
+design = "~treatment"
+log2_fc_cutoff = 0.1
+alpha = 0.05
+pval_corr_method = 'fdr'
+
+[outputs]
+project = "/home/ubuntu/shan_rna_atac/analysis/rna"
+figures = "/srv/http/shan/paired"
+

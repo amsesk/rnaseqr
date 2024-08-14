@@ -1,0 +1,82 @@
+---
+title: "RNAseq Report"
+fontsize: 12pt
+doumentclass: article
+classoption: letterpaper
+geometry: margin=0.5in
+output: 
+    pdf_document:
+        fig_width: 7.5
+        fig_height: 5
+        fig_caption: false
+        fig_crop: false
+        dev: cairo_pdf
+---
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+HOME = "/home/ubuntu"
+source(file.path(HOME, "dev/rnaseqr/R/functions.R"))
+library(configr)
+config = read.config(file = "/home/ubuntu/dev/rnaseqr/config.toml")
+project = config$output$project
+load(file.path(project, "deg.RData"))
+```
+
+This DEG analysis was run with the following configuration:
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+config
+```
+
+
+```{r}
+dim(counts)
+rownames(counts)[1:10]
+colnames(counts)[1:10]
+```
+
+\pagebreak
+
+## Clustered heatmap of raw counts scaled by gene
+
+The following heatmap shows your `r ncol(counts)` samples clustered by the expression profiles
+of the `r config$plotting$heatmap$n_top_variable_genes` genes that exhibit the largest variance 
+across the dataset. Values in heatmap cells are raw counts that have been scaled gene-wise (i.e.,
+row-wise).
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+pretty_draw_hm(counts,
+               genes = top_n_variable_genes(counts, 100),
+               column_names_gp = gpar(fontsize = 8))
+```
+
+\pagebreak
+## Principle component reduction of expression profiles
+
+The following PCA is based on the expression profiles of the top `r config$plotting$pca$n_top_variable_genes` 
+genes (again in tersm of rowwise variance) present in the filtered dataset.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+PC1_varExpl = {round(attributes(pca_pltdata)$percentVar[1]*100, 2)}
+PC2_varExpl = {round(attributes(pca_pltdata)$percentVar[2]*100, 2)}
+ggplot(pca_pltdata, aes(x=PC1, y = PC2, color = treatment)) +
+  geom_point(size = 6) +
+  geom_text(aes(label = sample), color = "black", size = 4) +
+  xlab(glue::glue("PC1 ({PC1_varExpl}%)")) +
+  ylab(glue::glue("PC2 ({PC2_varExpl}%)")) +
+  theme_bw() +
+  theme(
+        panel.grid = element_blank()
+        )
+```
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+plot_volcano(results[[1]],
+             group1 = "BHB",
+             group2 = "control",
+             return_figs = TRUE,
+             n_label = 20,
+             lfccut = config$deg$log2_fc_cutoff)
+```
+
