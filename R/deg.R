@@ -53,6 +53,7 @@ rownames(filt_counts) <- id2sym[rownames(filt_counts), ]$symbol
 # %% Define the minimum count value to keep, based on config
 #    And remove genes whose rowSums are that are <that
 ########################################################
+
 min_count_value = unname(quantile(apply(filt_counts, 1, sum), config$counts$filter$remove_lowest))
 keep_genes = names(which(rowSums(filt_counts)>=min_count_value))
 filt_counts = filt_counts[keep_genes,]

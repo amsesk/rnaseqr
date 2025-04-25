@@ -1,7 +1,11 @@
-Type: project 
-Description: Saba Ghassemi sequencing projects.
-Depends:
-    devtools
-    languageserver
-    BiocManager
-    tinytex
+Package: rnaseqr
+Title: Pipeline and functions for conducting DEG analyses and generating reports.
+Version: 0.0.0.9000
+Authors@R:
+    person("Kevin", "Amses", , "amsesk@upenn.edu", role = c("aut", "cre"))
+Description: R package for processing GeoMx datasets.
+License: `use_gpl3_license()`
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.2
+

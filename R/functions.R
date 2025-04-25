@@ -155,6 +155,22 @@ rm_singleton_genes <- function(counts) {
   filt_counts
 }
 
+# %% FUNC: Removes genes with total counts below some quantile of all genes
+rm_rare_genes_summed = function(counts, q) {
+  min_value = unname(quantile(apply(counts, 1, sum), q))
+  keep_genes = names(which(rowSums(counts)>=min_value))
+  message("Removing ", nrow(counts)-length(keep_genes), " rare genes with summed counts in the bottom ", q, " quantile.")
+  counts[keep_genes,]
+}
+
+# %% FUNC: Removes genes with <=min_group_size samples that have counts in the bottom quantile (q) of all counts in the matrix 
+rm_rare_genes_by_sample = function(counts, q, min_group_size) {
+  min_value = unname(quantile(counts, q))
+  keep_genes = rowSums(counts>min_value)>=min_group_size
+  message("Removing ", nrow(counts)-length(keep_genes), " rare genes without >= ", min_group_size, " samples with count values >= the bottom ", q, " quantile.")
+  counts[keep_genes,]
+}
+
 # %%
 remove_genes_with_dup_symbols <- function(counts, id2sym) {
   to_remove <- as_tibble(id2sym[rownames(counts), ]) %>%
@@ -189,15 +205,25 @@ deseq_deg <- function(deseq,
                       lfccut = 0.5,
                       alpha = 0.05,
                       pval_corr_method = "fdr",
-                      write_results_to = NULL) {
-  resdf <- results(deseq, contrast = c(indepvar, fc_numerator, fc_denominator), alpha = alpha, independentFiltering = FALSE, cooksCutoff = TRUE)
+                      write_results_to = NULL,
+                      independentFiltering = FALSE,
+                      cooksCutoff = TRUE
+                      ) {
+  message("independentFiltering: ", independentFiltering)
+  resdf <- results(deseq, 
+                   contrast = c(indepvar, fc_numerator, fc_denominator),
+                   alpha = alpha,
+                   independentFiltering = independentFiltering,
+                   cooksCutoff = cooksCutoff
+                   )
   resdf <- as.data.frame(resdf)
+  resdf = resdf[!is.na(resdf$pvalue),]
   resdf$gene <- rownames(resdf)
   resdf$fc_numerator <- fc_numerator
   resdf$fc_denominator <- fc_denominator
   resdf$padj <- p.adjust(resdf$pvalue, method = pval_corr_method)
   if (!is.null(write_results_to)) {
-    delim_out(tib=allres,
+    delim_out(tib=resdf,
               write_results_to=write_results_to)
   }
   resdf
@@ -210,19 +236,25 @@ deseq_deg_multi <- function(deseq,
                             lfccut = 0.5,
                             alpha = 0.05,
                             pval_corr_method = "fdr",
-                            write_results_to = NULL) {
+                            write_results_to = NULL,
+                            independentFiltering=FALSE,
+                            cooksCutoff=TRUE
+                            ) {
   allres <- data.table()
   for (row in seq_along(combinations[, 1])) {
     fc_numerator <- combinations[row, 1]
     fc_denominator <- combinations[row, 2]
-    resdf = deseq_deg(deseq=deseq, 
+    resdf = deseq_deg(deseq=deseq,
                       indepvar=indepvar,
                       fc_numerator=fc_numerator,
                       fc_denominator=fc_denominator,
                       lfccut = lfccut,
                       alpha=alpha,
                       pval_corr_method=pval_corr_method,
-                      write_results_to=NULL)
+                      write_results_to=NULL,
+                      independentFiltering = independentFiltering,
+                      cooksCutoff = cooksCutoff
+    )
     resdf <- subset(resdf, select = -c(padj))
     allres <- bind_rows(allres, resdf)
   }
@@ -246,8 +278,19 @@ deseq_deg_combinatorial <- function(deseq,
                                     lfccut = 0.5,
                                     alpha = 0.05,
                                     pval_corr_method = "fdr",
-                                    write_results_to = NULL) {
-  combs <- t(combn(unique(metadata[, indepvar]), m = 2))
+                                    write_results_to = NULL,
+                                    independentFiltering=FALSE,
+                                    cooksCutoff=TRUE
+                                    ) {
+  if(is.factor(metadata[,indepvar])) {
+    choices = levels(metadata[,indepvar])
+  } else {
+    choices = unique(metadata[,indepvar])
+  }
+  # if(is_tibble(choices)) {
+  #   choices=pull(choices)
+  # }
+  combs <- t(combn(choices, m = 2))
   allres <- deseq_deg_multi(
     deseq,
     indepvar,
@@ -255,10 +298,22 @@ deseq_deg_combinatorial <- function(deseq,
     lfccut = lfccut,
     alpha = alpha,
     pval_corr_method = pval_corr_method,
-    write_results_to = write_results_to
+    write_results_to = write_results_to,
+    independentFiltering = independentFiltering,
+    cooksCutoff = cooksCutoff
   )
   allres
 }
+
+# %% FUNC: Function that computes the max pvalue corresponding to the maximum adjusted pvalue that is below the supplied cutoff - can be used to annotated volcano plots with hoirzontal cutoff lines while preserving volcano plot shape
+pvalue_adjusted_cutoff = function(results, alpha, pval_col, padj_col) {
+  as_tibble(results) %>%
+    arrange({{padj_col}}) %>%
+    filter({{padj_col}} <= alpha) %>%
+    pull({{pval_col}}) %>%
+    max
+}
+# }}}
 
 # %%
 plot_volcanoes_combinatorial <- function(results,
@@ -272,8 +327,15 @@ plot_volcanoes_combinatorial <- function(results,
                                          height = 4.25,
                                          dotsize = 0.2,
                                          labelsize = 2,
-                                         return_figs = FALSE) {
-  combs <- t(combn(unique(metadata[, indepvar]), m = 2))
+                                         return_figs = FALSE,
+                                         plot_theme = ggplot2::theme()
+                                         ) {
+  if(is.factor(metadata[,indepvar])) {
+    choices = levels(metadata[,indepvar])
+  } else {
+    choices = unique(metadata[,indepvar])
+  }
+  combs <- t(combn(choices, m = 2))
   plts <- plot_volcanoes_multi(
     results = results,
     combinations = combs,
@@ -285,7 +347,8 @@ plot_volcanoes_combinatorial <- function(results,
     height = height,
     dotsize = dotsize,
     labelsize = labelsize,
-    return_figs = return_figs
+    return_figs = return_figs,
+    plot_theme = plot_theme
   )
   if (return_figs) {
     return(plts)
@@ -305,23 +368,27 @@ plot_volcanoes_multi <- function(results,
                                  height = 4.25,
                                  dotsize = 0.2,
                                  labelsize = 2,
-                                 return_figs = FALSE) {
+                                 return_figs = FALSE,
+                                 plot_theme = ggplot2::theme()
+                                 ) {
   plts <- list()
   for (row in seq_len(nrow(combinations))) {
     n <- combinations[row, 1]
     d <- combinations[row, 2]
     sub <- subset(results, fc_numerator == n & fc_denominator == d)
-    plts[[row]] <- plot_volcano(
-      reults = sub,
-      output_path = output_path,
-      n_label = n_label,
-      lfccut = lfccut,
-      alpha = alpha,
-      width = width,
-      height = height,
-      dotsize = dotsize,
-      labelsize = labelsize,
-      return_figs = return_figs
+    plts[[row]] <- plot_volcano(results = sub,
+                                group1 = n,
+                                group2 = d,
+                                output_path = output_path,
+                                n_label = n_label,
+                                lfccut = lfccut,
+                                alpha = alpha,
+                                width = width,
+                                height = height,
+                                dotsize = dotsize,
+                                labelsize = labelsize,
+                                return_figs = return_figs,
+                                plot_theme = plot_theme
     )
   }
   if (return_figs) {
@@ -335,7 +402,7 @@ plot_volcanoes_multi <- function(results,
   }
 }
 
-# %%
+# %% FUNC: plot_volcano {{{
 #' @importFrom glue glue
 #' @importFrom ggrepel geom_text_repel
 #' @import ggplot2
@@ -347,6 +414,7 @@ plot_volcano <- function(results,
                          gene_name_column = gene,
                          fc_numerator_column = fc_numerator,
                          fc_denominator_column = fc_denominator,
+                         pvalue_column = pvalue,
                          adjusted_pvalue_column = padj,
                          log_fc_column = log2FoldChange,
                          output_path = NULL,
@@ -361,7 +429,9 @@ plot_volcano <- function(results,
                          ylab = "-log10(padj)",
                          xlab = "log2FoldChange",
                          draw_cutoff_lines = TRUE,
-                         y_transform_func = function(y) -1 * log10(y)) {
+                         y_transform_func = function(y) -1 * log10(y),
+                         plot_theme = ggplot2::theme()
+                         ) {
   title <- glue("{group1} vs {group2}")
   results <- results %>%
     filter(
@@ -379,9 +449,16 @@ plot_volcano <- function(results,
     pull({{ gene_name_column }})
   results <- results %>%
     mutate(display_label = ifelse({{ gene_name_column }} %in% labels_to_show, TRUE, FALSE))
-  plt <- ggplot(data = results, aes(x = {{ log_fc_column }}, y = y_transform_func({{ adjusted_pvalue_column }}), color = is_sig)) +
+  # print(results %>% arrange(padj) %>% select(display_label, is_sig))
+  # print(results %>% select(display_label) %>% unique)
+  adjusted_alpha = pvalue_adjusted_cutoff(results, alpha, {{pvalue_column}}, {{adjusted_pvalue_column}})
+  plt <- ggplot(data = results, aes(x = {{ log_fc_column }}, y = y_transform_func({{ pvalue_column }}), color = is_sig)) +
     geom_point(size = dotsize) +
-    geom_text_repel(data = subset(results, display_label), aes(label = {{ gene_name_column }}), color = "black", size = labelsize, max.overlaps = 100) +
+    geom_text_repel(data = subset(results, display_label),
+                    aes(label = {{ gene_name_column }}),
+                    color = "black",
+                    size = labelsize,
+                    max.overlaps = 100) +
     scale_color_manual(values = c("black", "red")) +
     ylab(ylab) +
     xlab(xlab) +
@@ -390,10 +467,13 @@ plot_volcano <- function(results,
     theme_classic()
   if (draw_cutoff_lines) {
     plt <- plt +
-      geom_hline(yintercept = -log10(alpha), linetype = "dashed") +
+      geom_hline(yintercept = y_transform_func(adjusted_alpha), linetype = "dashed") +
       geom_vline(xintercept = -lfccut, linetype = "dashed") +
       geom_vline(xintercept = lfccut, linetype = "dashed")
   }
+  plt = plt +
+    plot_theme
+
   if (return_figs) {
     return(plt)
   } else {
@@ -402,4 +482,24 @@ plot_volcano <- function(results,
     dev.off()
   }
 }
-# %%
+# }}}
+
+# %% FUNC: Function to split a large list of plots into multiple patchworks over multiple pages {{{
+patchwork_pages = function(plts, nrow, ncol) {
+  patches = list()
+  plots_per_page = nrow * ncol
+  page_breaks = seq(1, length(plts), plots_per_page)
+  i = 1
+  for (start in page_breaks) {
+    if ( (start + plots_per_page) > length(plts)) {
+      end = length(plts)
+    } else {
+      end = (start + plots_per_page)-1
+    }
+    patches[[i]] = wrap_plots(plts[start:end]) +
+      plot_layout(nrow=nrow, ncol=ncol)
+    i=i+1
+  }
+  patches
+}
+# }}}
